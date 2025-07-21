@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JumpJump Cat</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #cceeff; font-family: sans-serif; }
+    canvas { display: block; margin: auto; background: #87cefa; border: 2px solid #333; }
+    #scoreBoard {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 20px;
+      background: rgba(255,255,255,0.7);
+      padding: 5px 15px;
+      border-radius: 10px;
+      font-weight: bold;
+    }
+    #restartButton {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px;
+      padding: 10px 20px;
+      background: orange;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="scoreBoard">Score: 0</div>
+  <button id="restartButton">Restart Game</button>
+  <canvas id="gameCanvas" width="480" height="320"></canvas>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreBoard = document.getElementById('scoreBoard');
+    const restartButton = document.getElementById('restartButton');
+
+    const gravity = 0.5;
+    const jumpPower = -8;
+    let gameOver = false;
+    let score = 0;
+    let highScore = 0;
+
+    const jumpSound = new Audio('https://freesound.org/data/previews/331/331912_3248244-lq.mp3');
+    const gameOverSound = new Audio('https://freesound.org/data/previews/353/353231_4019027-lq.mp3');
+
+    const catImg = new Image();
+    catImg.src = 'https://i.imgur.com/o5uMfKo.png'; // 귀여운 고양이 이미지
+
+    const bgImg = new Image();
+    bgImg.src = 'https://i.imgur.com/z5B81fj.png'; // 배경 이미지
+
+    const cat = {
+      x: 50,
+      y: 160,
+      width: 32,
+      height: 32,
+      vy: 0,
+      draw() {
+        ctx.drawImage(catImg, this.x, this.y, this.width, this.height);
+      },
+      update() {
+        this.vy += gravity;
+        this.y += this.vy;
+        if (this.y + this.height > canvas.height) {
+          gameOver = true;
+          gameOverSound.play();
+        }
+      },
+      jump() {
+        this.vy = jumpPower;
+        jumpSound.play();
+      },
+      reset() {
+        this.y = 160;
+        this.vy = 0;
+      }
+    };
+
+    const obstacles = [];
+    function createObstacle() {
+      const gap = 100;
+      const topHeight = Math.floor(Math.random() * 140) + 40;
+      obstacles.push({ x: canvas.width, width: 40, top: topHeight, gap, passed: false });
+    }
+
+    function drawObstacles() {
+      ctx.fillStyle = 'green';
+      obstacles.forEach(ob => {
+        ctx.fillRect(ob.x, 0, ob.width, ob.top);
+        ctx.fillRect(ob.x, ob.top + ob.gap, ob.width, canvas.height);
+      });
+    }
+
+    function updateObstacles() {
+      for (let i = 0; i < obstacles.length; i++) {
+        const ob = obstacles[i];
+        ob.x -= 2;
+        if (
+          cat.x < ob.x + ob.width &&
+          cat.x + cat.width > ob.x &&
+          (cat.y < ob.top || cat.y + cat.height > ob.top + ob.gap)
+        ) {
+          gameOver = true;
+          gameOverSound.play();
+        }
+        if (!ob.passed && ob.x + ob.width < cat.x) {
+          score++;
+          ob.passed = true;
+        }
+      }
+    }
+
+    function updateScore() {
+      scoreBoard.innerText = `Score: ${score}  High Score: ${highScore}`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (!gameOver && e.code === 'Space') cat.jump();
+    });
+    document.addEventListener('mousedown', () => {
+      if (!gameOver) cat.jump();
+    });
+
+    restartButton.onclick = () => {
+      score = 0;
+      gameOver = false;
+      cat.reset();
+      obstacles.length = 0;
+      restartButton.style.display = 'none';
+      loop();
+    };
+
+    let frame = 0;
+    function loop() {
+      if (gameOver) {
+        highScore = Math.max(score, highScore);
+        updateScore();
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '24px Arial';
+        ctx.fillText('Game Over', 170, 140);
+        ctx.fillText(`Final Score: ${score}`, 150, 170);
+        restartButton.style.display = 'block';
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+      frame++;
+      if (frame % 90 === 0) createObstacle();
+
+      cat.update();
+      cat.draw();
+      updateObstacles();
+      drawObstacles();
+      updateScore();
+
+      requestAnimationFrame(loop);
+    }
+
+    catImg.onload = () => {
+      bgImg.onload = () => {
+        loop();
+      };
+    };
+  </script>
+</body>
+</html>
