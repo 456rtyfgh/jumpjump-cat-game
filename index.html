@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cat Run 3D Pro</title>
+  <title>Cat Run 3D-Pro</title>
   <style>
     body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: black; color: white; }
     #ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 2; }
@@ -27,14 +27,14 @@
     let gravity = -0.01;
     let groundY = 0;
     let rampUp = false;
+    let gameStarted = false;
 
     const startBtn = document.getElementById('startBtn');
     const scoreDisplay = document.getElementById('score');
 
     startBtn.onclick = () => {
       document.getElementById('ui').style.display = 'none';
-      init();
-      animate();
+      gameStarted = true;
     };
 
     function init() {
@@ -113,6 +113,7 @@
 
     function animate() {
       requestAnimationFrame(animate);
+      if (!gameStarted) return;
 
       if (Math.random() < 0.02) createObstacle();
 
@@ -149,6 +150,9 @@
 
       renderer.render(scene, camera);
     }
+
+    init();
+    animate();
   </script>
 </body>
 </html>
