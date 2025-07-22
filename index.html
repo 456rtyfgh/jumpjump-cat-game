@@ -46,6 +46,7 @@
     let scene, camera, renderer, clock;
     let cat, floor, obstacles = [], fishes = [];
     let moveX = 0, score = 0, speed = 0.15, running = false;
+    let velocityY = 0, gravity = -0.5, isJumping = false;
     const loader = new THREE.GLTFLoader();
 
     function init() {
@@ -70,11 +71,12 @@
       floor.rotation.x = -Math.PI / 2;
       scene.add(floor);
 
-      loader.load('https://models.babylonjs.com/Cat.glb', function(gltf) {
+      loader.load('https://threejs.org/examples/models/gltf/Flamingo.glb', function(gltf) {
         cat = gltf.scene;
-        cat.scale.set(0.8, 0.8, 0.8);
+        cat.scale.set(0.02, 0.02, 0.02);
         cat.position.set(0, 0, 0);
         scene.add(cat);
+        document.getElementById('startBtn').disabled = false;
       });
 
       for (let i = 0; i < 10; i++) createObstacle(i);
@@ -89,10 +91,15 @@
       document.addEventListener('keydown', (e) => {
         if (e.code === 'ArrowLeft') moveX = -2;
         if (e.code === 'ArrowRight') moveX = 2;
+        if (e.code === 'Space' && !isJumping && running) {
+          velocityY = 0.2;
+          isJumping = true;
+        }
       });
       document.addEventListener('keyup', () => moveX = 0);
 
       document.getElementById('startBtn').onclick = () => {
+        if (!cat) return;
         document.getElementById('startBtn').style.display = 'none';
         document.getElementById('bgm').play();
         running = true;
@@ -129,6 +136,16 @@
       cat.position.z -= speed * 60 * delta;
       cat.position.x += (moveX - cat.position.x) * 0.2;
 
+      // 점프 중이면 y 위치에 중력 적용
+      if (isJumping) {
+        velocityY += gravity * delta;
+        cat.position.y += velocityY * 60 * delta;
+        if (cat.position.y <= 0) {
+          cat.position.y = 0;
+          isJumping = false;
+        }
+      }
+
       camera.position.z = cat.position.z + 6;
       camera.lookAt(cat.position.x, cat.position.y, cat.position.z);
       floor.position.z = cat.position.z - 10;
@@ -141,7 +158,11 @@
           document.getElementById('score').innerText = `Score: ${score}`;
           if (score % 10 === 0) speed += 0.01;
         }
-        if (Math.abs(cat.position.z - ob.position.z) < 1 && Math.abs(cat.position.x - ob.position.x) < 1) {
+        if (
+          Math.abs(cat.position.z - ob.position.z) < 1 &&
+          Math.abs(cat.position.x - ob.position.x) < 1 &&
+          cat.position.y < 1
+        ) {
           running = false;
           document.getElementById('bgm').pause();
           document.getElementById('gameover').play();
