@@ -5,186 +5,150 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cat Run 3D Pro</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: black; color: white; }
+    #ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 2; }
+    #startBtn { padding: 10px 20px; font-size: 18px; }
     canvas { display: block; }
-    #ui {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: white;
-      font-family: sans-serif;
-      z-index: 10;
-      text-align: center;
-    }
-    #ui h1 { margin: 0; font-size: 24px; }
-    #ui p { margin: 5px 0; }
-    #startBtn, #restartBtn {
-      margin-top: 10px;
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-      border: none;
-      border-radius: 6px;
-    }
   </style>
 </head>
 <body>
   <div id="ui">
-    <h1>Cat Run 3D</h1>
+    <h1>Cat Run 3D with Jump, Duck, and Ramps</h1>
     <p id="score">Score: 0</p>
     <button id="startBtn">Start Game</button>
-    <button id="restartBtn" style="display:none;">Restart</button>
   </div>
-  <audio id="bgm" src="https://cdn.pixabay.com/audio/2022/12/01/audio_c99562ab0d.mp3" loop></audio>
-  <audio id="pickup" src="https://cdn.pixabay.com/audio/2022/03/15/audio_7d07b221e3.mp3"></audio>
-  <audio id="gameover" src="https://cdn.pixabay.com/audio/2021/08/04/audio_d5ba63f579.mp3"></audio>
-
-  <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
   <script>
-    let scene, camera, renderer, clock;
-    let cat, floor, obstacles = [], fishes = [];
-    let moveX = 0, score = 0, speed = 0.15, running = false;
-    let velocityY = 0, gravity = -0.5, isJumping = false;
-    const loader = new THREE.GLTFLoader();
+    let scene, camera, renderer, cat, mixer;
+    let obstacles = [];
+    let isJumping = false, isDucking = false;
+    let score = 0;
+    let velocityY = 0;
+    let gravity = -0.01;
+    let groundY = 0;
+    let rampUp = false;
+
+    const startBtn = document.getElementById('startBtn');
+    const scoreDisplay = document.getElementById('score');
+
+    startBtn.onclick = () => {
+      document.getElementById('ui').style.display = 'none';
+      init();
+      animate();
+    };
 
     function init() {
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xaed9f4);
-
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 4, 6);
-
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      renderer = new THREE.WebGLRenderer();
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.body.appendChild(renderer.domElement);
 
-      const light = new THREE.DirectionalLight(0xffffff, 1);
-      light.position.set(5, 10, 5);
+      const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambient);
+
+      const light = new THREE.DirectionalLight(0xffffff, 0.6);
+      light.position.set(1, 1, 1);
       scene.add(light);
-      scene.add(new THREE.AmbientLight(0x404040));
 
-      const floorGeo = new THREE.PlaneGeometry(20, 1000);
-      const floorMat = new THREE.MeshStandardMaterial({ color: 0x4caf50 });
-      floor = new THREE.Mesh(floorGeo, floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      scene.add(floor);
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(50, 100), new THREE.MeshStandardMaterial({color: 0x333333}));
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
 
-      loader.load('https://threejs.org/examples/models/gltf/Flamingo.glb', function(gltf) {
-        cat = gltf.scene;
-        cat.scale.set(0.02, 0.02, 0.02);
-        cat.position.set(0, 0, 0);
-        scene.add(cat);
-        document.getElementById('startBtn').disabled = false;
-      });
+      const catGeo = new THREE.BoxGeometry(1, 1, 1);
+      const catMat = new THREE.MeshStandardMaterial({color: 0xffcc00});
+      cat = new THREE.Mesh(catGeo, catMat);
+      cat.position.y = 0.5;
+      cat.position.z = 0;
+      scene.add(cat);
 
-      for (let i = 0; i < 10; i++) createObstacle(i);
-      for (let i = 0; i < 5; i++) createFish(i);
+      camera.position.set(0, 2, 5);
+      camera.lookAt(cat.position);
 
-      window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      });
-
-      document.addEventListener('keydown', (e) => {
-        if (e.code === 'ArrowLeft') moveX = -2;
-        if (e.code === 'ArrowRight') moveX = 2;
-        if (e.code === 'Space' && !isJumping && running) {
-          velocityY = 0.2;
-          isJumping = true;
-        }
-      });
-      document.addEventListener('keyup', () => moveX = 0);
-
-      document.getElementById('startBtn').onclick = () => {
-        if (!cat) return;
-        document.getElementById('startBtn').style.display = 'none';
-        document.getElementById('bgm').play();
-        running = true;
-        clock = new THREE.Clock();
-        animate();
-      };
-
-      document.getElementById('restartBtn').onclick = () => location.reload();
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
     }
 
-    function createObstacle(index) {
-      const obGeo = new THREE.BoxGeometry(1, 1, 1);
-      const obMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-      const ob = new THREE.Mesh(obGeo, obMat);
-      ob.position.set((Math.random() - 0.5) * 6, 0.5, -index * 10);
-      scene.add(ob);
-      obstacles.push(ob);
+    function createObstacle() {
+      const rand = Math.random();
+      let height = 1;
+      let type = 'jump';
+      if (rand < 0.33) {
+        height = 0.5;
+        type = 'duck';
+      } else if (rand > 0.66) {
+        height = 0.25;
+        type = 'ramp';
+      }
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(1, height, 1),
+        new THREE.MeshStandardMaterial({color: type === 'ramp' ? 0x00ffff : 0xff0000})
+      );
+      box.position.z = -50;
+      box.position.y = height / 2;
+      scene.add(box);
+      box.userData = { type };
+      obstacles.push(box);
     }
 
-    function createFish(index) {
-      const fishGeo = new THREE.TetrahedronGeometry(0.3);
-      const fishMat = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
-      const fish = new THREE.Mesh(fishGeo, fishMat);
-      fish.position.set((Math.random() - 0.5) * 6, 0.3, -index * 20 - 15);
-      scene.add(fish);
-      fishes.push(fish);
+    function onKeyDown(e) {
+      if (e.code === 'Space' && !isJumping) {
+        velocityY = 0.15;
+        isJumping = true;
+      }
+      if (e.code === 'ArrowDown' && !isDucking) {
+        cat.scale.y = 0.5;
+        cat.position.y = 0.25;
+        isDucking = true;
+      }
+    }
+
+    function onKeyUp(e) {
+      if (e.code === 'ArrowDown') {
+        cat.scale.y = 1;
+        cat.position.y = 0.5;
+        isDucking = false;
+      }
     }
 
     function animate() {
-      if (!running || !cat) return;
       requestAnimationFrame(animate);
-      const delta = clock.getDelta();
 
-      cat.position.z -= speed * 60 * delta;
-      cat.position.x += (moveX - cat.position.x) * 0.2;
+      if (Math.random() < 0.02) createObstacle();
 
-      // 점프 중이면 y 위치에 중력 적용
-      if (isJumping) {
-        velocityY += gravity * delta;
-        cat.position.y += velocityY * 60 * delta;
-        if (cat.position.y <= 0) {
-          cat.position.y = 0;
-          isJumping = false;
-        }
+      cat.position.y += velocityY;
+      velocityY += gravity;
+
+      if (cat.position.y <= groundY + 0.5) {
+        cat.position.y = 0.5;
+        isJumping = false;
+        velocityY = 0;
       }
 
-      camera.position.z = cat.position.z + 6;
-      camera.lookAt(cat.position.x, cat.position.y, cat.position.z);
-      floor.position.z = cat.position.z - 10;
-
-      obstacles.forEach((ob) => {
-        if (ob.position.z > cat.position.z + 2) {
-          ob.position.z -= 100;
-          ob.position.x = (Math.random() - 0.5) * 6;
+      obstacles.forEach((obs, i) => {
+        obs.position.z += 0.2;
+        if (obs.position.z > 5) {
+          scene.remove(obs);
+          obstacles.splice(i, 1);
           score++;
-          document.getElementById('score').innerText = `Score: ${score}`;
-          if (score % 10 === 0) speed += 0.01;
+          scoreDisplay.textContent = 'Score: ' + score;
         }
-        if (
-          Math.abs(cat.position.z - ob.position.z) < 1 &&
-          Math.abs(cat.position.x - ob.position.x) < 1 &&
-          cat.position.y < 1
-        ) {
-          running = false;
-          document.getElementById('bgm').pause();
-          document.getElementById('gameover').play();
-          document.getElementById('restartBtn').style.display = 'inline';
-          alert(`Game Over! Final Score: ${score}`);
-        }
-      });
-
-      fishes.forEach((fish, i) => {
-        if (Math.abs(cat.position.z - fish.position.z) < 1 && Math.abs(cat.position.x - fish.position.x) < 1) {
-          document.getElementById('pickup').play();
-          scene.remove(fish);
-          fishes.splice(i, 1);
-          score += 5;
-          document.getElementById('score').innerText = `Score: ${score}`;
+        const dz = Math.abs(obs.position.z - cat.position.z);
+        if (dz < 0.6) {
+          const hit = (obs.userData.type === 'jump' && cat.position.y < obs.geometry.parameters.height) ||
+                      (obs.userData.type === 'duck' && !isDucking) ||
+                      (obs.userData.type === 'ramp' && (cat.position.y < 0.7));
+          if (hit) {
+            alert('Game Over! Score: ' + score);
+            window.location.reload();
+          } else if (obs.userData.type === 'ramp') {
+            cat.position.y += 0.005;
+          }
         }
       });
 
       renderer.render(scene, camera);
     }
-
-    init();
   </script>
 </body>
 </html>
